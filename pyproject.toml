@@ -2,7 +2,7 @@
 name = "nearfieldpy"
 version = "0.1.0"
 description = "Python package for near-field measurements of antenna patterns"
-authors = ["Emile Carinos <emile.carinos@irap.omp.eu>,Hayato Takakura <takakura.hayato@jaxa.jp>,Fumiya Miura,Rion Takahashi"]
+authors = ["Emile Carinos <emile.carinos@irap.omp.eu>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
