@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime
 from scipy.interpolate import griddata, CubicSpline
 import matplotlib.pyplot as plt
-
+import re
 
 
 def str_time(date_strings,date_format='%Y-%m-%d_%H%M'):
@@ -98,7 +98,7 @@ def map_2d_correction(dataref,time,lenx,leny,freq='140.0G'):
     dataref_2d=extrapolated_amp_ref.reshape(lenx,leny)
     return dataref_2d
 
-def make_data_2d(data,dataref,freq='140.0G'):
+def make_data_2d(data,dataref,freq='140.0'):
     """
     Returns the 2D array associated with one frequency measurement.
     
@@ -123,7 +123,7 @@ def make_data_2d(data,dataref,freq='140.0G'):
     """
     lenx = int(np.sqrt(data['x'].size))
     leny = int(np.sqrt(data['y'].size))
-    amp=complex_amplitude(data['Amp.'+freq],data['Phase'+freq])
+    amp=complex_amplitude(data['Amp.'+freq+'G'],data['Phase'+freq+'G'])
     data2d=np.array(amp)
     data2d=data2d.reshape(lenx,leny)
     if dataref == None:
@@ -144,20 +144,17 @@ def get_phase(complex_amp):
     """
     return np.angle(complex_amp,deg=True)
 
-def get_freqlist(data,nfreq=21):
+def get_freqlist(data):
     """
-    Helper function to retrieve the frequencies from a measurement data file.
+    Helper function to retrieve the frequencies (in GHz) from a measurement data file.
     """
-    freqlist = np.array(data.columns.values[4:],dtype='str')
-    freqlist= np.char.strip(freqlist[:nfreq],'Amp.')  ### !!!! How to get nfreq from the datafile itself??
+    freqs = np.array(data.columns.values[4:],dtype='str')
+    l=[]
+    for t in freqs:
+        l.append(re.findall(r'\d+\.\d+', t))
+    freqlist = np.unique(l)
     return freqlist
 
-def get_freq_ghz(freqlist):
-    """
-    Helper function to convert strings like '140.0G' to floats.
-    """
-    freqlist_ghz = np.array(np.char.strip(freqlist,'G'),dtype=float) #get the values of the frequencies in GHz
-    return(freqlist_ghz)
     
 def compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples=(512,512)):
     """
@@ -170,7 +167,7 @@ def compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples=(512,512)):
     fourier_datacube=np.array(fourier_datacube)
 
     dx,dy = np.max(np.diff(data['x'])),np.max(np.diff(data['y'])) #find the x and y resolution, the steps used in the measurement
-    freqlist_ghz = freqlist_ghz = np.array(np.char.strip(freqlist,'G'),dtype=float) #get the values of the frequencies in GHz
+    z = np.array(freqlist,dtype=float) #get the values of the frequencies in GHz
 
     k0=2*np.pi*freqlist_ghz/299.792458 #k0 in mm-1 # compute the base wavenumber of the transform
 
@@ -224,7 +221,7 @@ class Measurement(object):
 
     @property
     def freqlist_ghz(self):
-        return get_freq_ghz(self.freqlist)
+        return np.array(self.freqlist,dtype=float)
     
     @staticmethod
     def load_from_file(path,pathref,freqlist,fourier_samples=(512,512)):
@@ -250,8 +247,6 @@ class Measurement(object):
         fourier_datacube, *fourier_coordinates = compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples)
 
         return Measurement(data,dataref,datacube,freqlist,fourier_datacube,np.array(fourier_coordinates),fourier_samples)
-    
-
     
     def plot_antenna_pattern(self, frequency_index, ax=None, xlabel=None, ylabel=None, title='',db=True,
              cmap='viridis', style='default', **kwargs):
