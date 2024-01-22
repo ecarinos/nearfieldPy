@@ -167,7 +167,7 @@ def compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples=(512,512)):
     fourier_datacube=np.array(fourier_datacube)
 
     dx,dy = np.max(np.diff(data['x'])),np.max(np.diff(data['y'])) #find the x and y resolution, the steps used in the measurement
-    z = np.array(freqlist,dtype=float) #get the values of the frequencies in GHz
+    freqlist_ghz = np.array(freqlist,dtype=float) #get the values of the frequencies in GHz
 
     k0=2*np.pi*freqlist_ghz/299.792458 #k0 in mm-1 # compute the base wavenumber of the transform
 
