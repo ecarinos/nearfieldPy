@@ -227,7 +227,10 @@ class Measurement(object):
         return get_freq_ghz(self.freqlist)
     
     @staticmethod
-    def load_nf_data(path,pathref,freqlist,fourier_samples=(512,512)):
+    def load_from_file(path,pathref,freqlist,fourier_samples=(512,512)):
+        """
+        Loads a Measurement from data files with ISAS format.       
+        """
 
         data=pd.read_pickle(path)
         data_sorted=data.sort_values(['y','x'])
@@ -236,7 +239,7 @@ class Measurement(object):
         except:
             dataref=None
 
-        freqlist = get_freqlist(data,21)
+        freqlist = get_freqlist(data,21) # HARD CODED 21 
         
         data2dlist=[]
         for freq in freqlist:
@@ -247,6 +250,8 @@ class Measurement(object):
         fourier_datacube, *fourier_coordinates = compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples)
 
         return Measurement(data,dataref,datacube,freqlist,fourier_datacube,np.array(fourier_coordinates),fourier_samples)
+    
+
     
     def plot_antenna_pattern(self, frequency_index, ax=None, xlabel=None, ylabel=None, title='',db=True,
              cmap='viridis', style='default', **kwargs):
