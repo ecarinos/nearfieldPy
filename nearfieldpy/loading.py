@@ -20,24 +20,6 @@ def str_time(date_strings,date_format='%Y-%m-%d_%H%M'):
     date_seconds = np.vectorize(lambda x: x.total_seconds())(minutes_differences)
     return date_seconds
 
-data_1mm_yx_21 = 'MHFT-ORFPM_nf_V0W0_Pol-YY_2023-11-19_0106.pkl'
-data_1mm_yx_21_ref = 'MHFT-ORFPM_nf_V0W0_Pol-YY_2023-11-19_0106_ref.pkl'
-
-
-data_0_68mm_xy_21 = 'MHFT-ORFPM_nf_V0W0_Pol-YY_2023-11-17_1158.pkl'
-data_0_68mm_xy_21_ref = 'MHFT-ORFPM_nf_V0W0_Pol-YY_2023-11-17_1158_ref.pkl'
-
-data_1mm_xy_21='MHFT-ORFPM_nf_V0W0_Pol-YY_2023-11-14_1950.pkl'
-data_1mm_xy_21_ref='MHFT-ORFPM_nf_V0W0_Pol-YY_2023-11-14_1950_ref.pkl'
-
-data_1mm_xy_21_csv='MHFT-ORFPM_nf_V0W0_Pol-YY_2023-11-14_1950.csv'
-data_1mm_offset_crs = 'MHFT-ORFPM_nf_V-112W0_Pol-YX_2023-11-13_1446.pkl'
-data_1mm_offset = 'MHFT-ORFPM_nf_V-112W0_Pol-YY_2023-11-09_1109.pkl'
-data_holo_1 = 'holographic/MHFT-ORFPM_sig_V0W0_Pol-YY_2023-11-20_1958.pkl'
-data_holo_2 = 'holographic/MHFT-ORFPM_sig-ref_V0W0_Pol-YY_2023-11-21_0321.pkl'
-
-path = data_1mm_xy_21
-
 def complex_amplitude(amplitude,phase):
     """
     Returns the complex number associated with 
@@ -126,7 +108,7 @@ def make_data_2d(data,dataref,freq='140.0'):
     amp=complex_amplitude(data['Amp.'+freq+'G'],data['Phase'+freq+'G'])
     data2d=np.array(amp)
     data2d=data2d.reshape(lenx,leny)
-    if dataref == None:
+    if dataref is None:
         time = str_time(data['Time'])
         dataref_2d = map_2d_correction(dataref,time,lenx,leny,freq)
         data2d = data2d/dataref_2d
@@ -224,7 +206,7 @@ class Measurement(object):
         return np.array(self.freqlist,dtype=float)
     
     @staticmethod
-    def load_from_file(path,pathref,freqlist,fourier_samples=(512,512)):
+    def load_from_file(path,pathref,fourier_samples=(512,512)):
         """
         Loads a Measurement from data files with ISAS format.       
         """
@@ -236,7 +218,7 @@ class Measurement(object):
         except:
             dataref=None
 
-        freqlist = get_freqlist(data,21) # HARD CODED 21 
+        freqlist = get_freqlist(data)
         
         data2dlist=[]
         for freq in freqlist:
