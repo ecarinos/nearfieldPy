@@ -1,46 +1,10 @@
 import csv
 import pandas as pd 
 import numpy as np 
-from datetime import datetime
-from scipy.interpolate import griddata, CubicSpline
+from scipy.interpolate import CubicSpline
 import matplotlib.pyplot as plt
 import re
-
-
-def str_time(date_strings,date_format='%Y-%m-%d_%H%M'):
-    """
-    Helper function to convert an array of date strings into 
-    their values in seconds, given the reference date is 
-    the first entry of the array.
-    """
-    reference_date = datetime.strptime(date_strings[0],date_format)
-    
-    date_objects = np.vectorize(lambda x: datetime.strptime(x, date_format))(date_strings)
-    minutes_differences = (date_objects - reference_date)
-    date_seconds = np.vectorize(lambda x: x.total_seconds())(minutes_differences)
-    return date_seconds
-
-def complex_amplitude(amplitude,phase):
-    """
-    Returns the complex number associated with 
-    the measured phase (in degrees) and the measured intensity (in dB)
-
-    Parameters
-    ----------
-    amplitude : float [dB]
-        Amplitude in dB of the measured signal. Note we are measuring 
-        intensities and not amplitudes, hence the factor 2.
-    phase : float [degrees]
-        Phase in degrees of the measured signal.  
-
-    Returns
-    -------
-    complex_amp : float complex [arbitrary units]
-        Complex "amplitude" of the measured signal.
-    """
-    rad_phase=np.radians(phase)
-    complex_amp = 10**(amplitude/(2*10))*np.exp(1j*rad_phase)
-    return complex_amp
+from utils import *
 
 def map_2d_correction(dataref,time,lenx,leny,freq='140.0G'):
     """
@@ -74,10 +38,10 @@ def map_2d_correction(dataref,time,lenx,leny,freq='140.0G'):
     
     """
     time_ref = str_time(dataref['Time'])
-    amp_ref=complex_amplitude(dataref['Amp.'+freq],dataref['Phase'+freq])
+    amp_ref = complex_amplitude(dataref['Amp.'+freq],dataref['Phase'+freq])
     cs = CubicSpline(time_ref,np.array(amp_ref))
     extrapolated_amp_ref = cs(time)
-    dataref_2d=extrapolated_amp_ref.reshape(lenx,leny)
+    dataref_2d = extrapolated_amp_ref.reshape(lenx,leny)
     return dataref_2d
 
 def make_data_2d(data,dataref,freq='140.0'):
@@ -105,37 +69,14 @@ def make_data_2d(data,dataref,freq='140.0'):
     """
     lenx = int(np.sqrt(data['x'].size))
     leny = int(np.sqrt(data['y'].size))
-    amp=complex_amplitude(data['Amp.'+freq+'G'],data['Phase'+freq+'G'])
-    data2d=np.array(amp)
-    data2d=data2d.reshape(lenx,leny)
+    amp = complex_amplitude(data['Amp.'+freq+'G'],data['Phase'+freq+'G'])
+    data2d = np.array(amp)
+    data2d = data2d.reshape(lenx,leny)
     if dataref is None:
         time = str_time(data['Time'])
         dataref_2d = map_2d_correction(dataref,time,lenx,leny,freq)
         data2d = data2d/dataref_2d
     return data2d
-
-def get_db(complex_amp):
-    """
-    Helper function to get the value in db of the complex amplitude
-    of the signal. Since we measure intensities, there's a factor 2 in the computation.
-    """
-    return 2*10*np.log10(np.abs(complex_amp))
-def get_phase(complex_amp):
-    """
-    Helper function to get the value in degrees of the phase of the signal.
-    """
-    return np.angle(complex_amp,deg=True)
-
-def get_freqlist(data):
-    """
-    Helper function to retrieve the frequencies (in GHz) from a measurement data file.
-    """
-    freqs = np.array(data.columns.values[4:],dtype='str')
-    l=[]
-    for t in freqs:
-        l.append(re.findall(r'\d+\.\d+', t))
-    freqlist = np.unique(l)
-    return freqlist
 
     
 def compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples=(512,512)):
@@ -143,15 +84,16 @@ def compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples=(512,512)):
     From the measurement data, the sorted datacube, list of frequencies and number of samples,
     returns the 2D FFT for each frequency, as well as the associated u,v coordinates.
     """
-    fourier_datacube=[]
+    fourier_datacube = []
     for i in range(datacube.shape[0]):
         fourier_datacube.append(np.fft.fftshift(np.fft.fft2(datacube[i],s=fourier_samples)))
-    fourier_datacube=np.array(fourier_datacube)
+    fourier_datacube = np.array(fourier_datacube)
+    fourier_datacube = fourier_datacube/np.nanmax(np.abs(fourier_datacube)) #normalize the spectra
 
     dx,dy = np.max(np.diff(data['x'])),np.max(np.diff(data['y'])) #find the x and y resolution, the steps used in the measurement
     freqlist_ghz = np.array(freqlist,dtype=float) #get the values of the frequencies in GHz
 
-    k0=2*np.pi*freqlist_ghz/299.792458 #k0 in mm-1 # compute the base wavenumber of the transform
+    k0 = 2*np.pi*freqlist_ghz/299.792458 #k0 in mm-1 # compute the base wavenumber of the transform
 
     #compute the u,v Fourier coordinates
     u_all = np.linspace(-np.pi/(dx*k0),np.pi/(dx*k0),fourier_samples[0]) #spatial frequencies go from -pi/k0 to pi/k0
@@ -184,15 +126,17 @@ class Measurement(object):
         3D array, with the shape (frequencies,*fourier_samples) containing
         the 2D FFT for each slice of datacube
     fourier_coordinates : list of Array
-        u and v coordinates for each sampled frequency, each with
+        Coordinates for each sampled frequency, each with
         the shapes (fourier_samples[0],frequencies) and (fourier_samples[1],frequencies)
+    fourier_coordinate_system : str
+        Coordinate system used for the 2D FFT. Defaults to 'uv'.
     fourier_samples : int tuple
         Number of samples to zero-pad the FFT. Defaults to (512,512).
         Should always be a power of 2 greater than the length (in points)
         of each measurement axis.
 
     """
-    def __init__(self,data,dataref,datacube,freqlist,fourier_datacube,fourier_coordinates,fourier_samples=(512,512)):
+    def __init__(self,data,dataref,datacube,freqlist,fourier_datacube,fourier_coordinates,fourier_coordinate_system,fourier_samples=(512,512)):
         self.data = data
         self.dataref = dataref
         self.datacube = datacube
@@ -200,6 +144,7 @@ class Measurement(object):
         self.fourier_datacube = fourier_datacube
         self.fourier_samples = fourier_samples
         self.fourier_coordinates = fourier_coordinates
+        self.fourier_coordinate_system = fourier_coordinate_system
 
     @property
     def freqlist_ghz(self):
@@ -211,24 +156,25 @@ class Measurement(object):
         Loads a Measurement from data files with ISAS format.       
         """
 
-        data=pd.read_pickle(path)
-        data_sorted=data.sort_values(['y','x'])
+        data = pd.read_pickle(path)
+        data_sorted = data.sort_values(['y','x'])
         try:
-            dataref=pd.read_pickle(pathref)
+            dataref = pd.read_pickle(pathref)
         except:
-            dataref=None
+            dataref = None
 
         freqlist = get_freqlist(data)
         
-        data2dlist=[]
+        data2dlist = []
         for freq in freqlist:
             dat = make_data_2d(data_sorted,dataref,freq)
             data2dlist.append(dat)
 
         datacube = np.array(data2dlist)
         fourier_datacube, *fourier_coordinates = compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples)
+        fourier_coordinate_system = 'uv'
 
-        return Measurement(data,dataref,datacube,freqlist,fourier_datacube,np.array(fourier_coordinates),fourier_samples)
+        return Measurement(data,dataref,datacube,freqlist,fourier_datacube,np.array(fourier_coordinates),fourier_coordinate_system,fourier_samples)
     
     def plot_antenna_pattern(self, frequency_index, ax=None, xlabel=None, ylabel=None, title='',db=True,
              cmap='viridis', style='default', **kwargs):
@@ -238,6 +184,148 @@ class Measurement(object):
         ----------
         frequency_index : int
             Index of the corresponding frequency of the antenna pattern
+        ax : `~matplotlib.axes.Axes`
+            A matplotlib axes object to plot into. If no axes is provided,
+            a new one will be generated.
+        xlabel : str
+            Plot x axis label
+        ylabel : str
+            Plot y axis label
+        title : str
+            Plot set_title. Defaults to the frequency of the measurement.
+        db : bool
+            Whether to plot in dB scale or arbitrary units.
+        cmap : str or matplotlib colormap object
+            Colormap for the antenna pattern
+        style : str
+            Path or URL to a matplotlib style file, or name of one of
+            matplotlib's built-in stylesheets (e.g. 'ggplot').
+        kwargs : dict
+            Dictionary of arguments to be passed to `matplotlib.pyplot.pcolormesh`.
+        Returns
+        -------
+        ax : `~matplotlib.axes.Axes`
+            The matplotlib axes object.
+        """
+        
+        with plt.style.context(style):
+            if ax is None:
+                fig, ax = plt.subplots()
+            if title == '':
+                title = self.freqlist[frequency_index]+'Hz'
+            if db:
+                pattern = get_db(self.fourier_datacube[frequency_index])
+                cbar_label = 'Amplitude (dB)'
+            else:
+                pattern = np.abs(self.fourier_datacube[frequency_index])
+                cbar_label = 'Amplitude (arbitrary units)'
+            im = ax.pcolormesh(self.fourier_coordinates[0][:,frequency_index], self.fourier_coordinates[1][:,frequency_index], pattern, 
+                          shading='auto', cmap=cmap, **kwargs)
+            
+            cbar = plt.colorbar(im, ax=ax)
+            cbar.set_label(cbar_label)
+
+            ax.set_aspect('equal')
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+            ax.set_title(title)
+        return ax
+    
+    def plot_nearfield(self, frequency_index, ax=None, title='',db=True,
+             cmap='viridis', style='default', **kwargs):
+        """Plots the nearfield amplitude and phase measurements for a given frequency index, in the xy plane.
+        
+        Parameters
+        ----------
+        frequency_index : int
+            Index of the corresponding frequency of the antenna pattern
+        ax : `~matplotlib.axes.Axes`
+            A matplotlib axes object to plot into. If no axes is provided,
+            a new one will be generated.
+        title : str
+            Plot set_title. Defaults to the frequency of the measurement.
+        db : bool
+            Whether to plot in dB scale or arbitrary units.
+        cmap : str or matplotlib colormap object
+            Colormap for the antenna pattern.
+        style : str
+            Path or URL to a matplotlib style file, or name of one of
+            matplotlib's built-in stylesheets (e.g. 'ggplot').
+        kwargs : dict
+            Dictionary of arguments to be passed to `matplotlib.pyplot.pcolormesh`.
+        Returns
+        -------
+        ax : `~matplotlib.axes.Axes`
+            The matplotlib axes object.
+        """
+        with plt.style.context(style):
+            if ax is None:
+                fig, ax = plt.subplots(2)
+            if title == '':
+                title = self.freqlist[frequency_index]+'GHz'
+            if db:
+                amp = get_db(self.datacube[frequency_index])
+            else:
+                amp = np.abs(self.datacube[frequency_index])
+            phase = np.angle(self.datacube[frequency_index],deg=True)
+            im1 = ax[0].pcolormesh(amp, 
+                          shading='auto', cmap=cmap, **kwargs)
+            im2 = ax[1].pcolormesh(phase,
+                             shading='auto', cmap=cmap, **kwargs)
+
+            cbar1 = plt.colorbar(im1, ax=ax[0])
+            cbar2 = plt.colorbar(im2, ax=ax[1])
+            cbar1.set_label('Amplitude (dB)')
+            cbar2.set_label('Phase (degrees)')
+
+            ax[0].set_aspect('equal')
+            ax[1].set_aspect('equal')
+
+            ax[0].set_title(title)
+        return ax
+    
+    def plot_measurement(self,frequency_index,ax=None,xlabel=None,ylabel=None,title='',db=True,
+                         cmap='viridis', style='default', **kwargs):
+        """Plots the antenna pattern and nearfield measurements for a given frequency index,
+        both in the xy plane and in the Fourier space.
+        """
+        if ax is None:
+            fig, ax = plt.subplots(3)
+        if title == '':
+            title = self.freqlist[frequency_index]+'GHz'
+        ax[:2] = self.plot_nearfield(frequency_index,ax=ax[:2],title=title,db=db,cmap=cmap,style=style,**kwargs)
+        ax[2] = self.plot_antenna_pattern(frequency_index,ax=ax[2],xlabel=xlabel,ylabel=ylabel,title=title,db=db,cmap=cmap,style=style,**kwargs)
+
+        return ax
+
+class Holographic(object):
+    """The Holographic class stores the data from one set of holographic measurements,
+    initialized with the load_holo_data method and the paths of the .pkl data files.
+    It contains Measurement objects for the signal, reference and hologram measurements.    
+    """
+    def __init__(self,signal,reference,hologram):
+        self.signal = signal
+        self.reference = reference
+        self.hologram = hologram
+    
+    def load_from_file(path_signal,path_reference,path_hologram,path_signal_ref,path_reference_ref,path_hologram_ref,fourier_samples=(512,512)):
+        """
+        Loads a Holographic object from data files with ISAS format.       
+        """
+        signal = Measurement.load_from_file(path_signal,path_signal_ref,fourier_samples)
+        reference = Measurement.load_from_file(path_reference,path_reference_ref,fourier_samples)
+        hologram = Measurement.load_from_file(path_hologram,path_hologram_ref,fourier_samples)
+        return Holographic(signal,reference,hologram)
+    
+    def plot_hologram(self, frequency_index, ax=None, xlabel=None, ylabel=None, title='',db=True,
+                      cmap='viridis', style='default', **kwargs):
+        """Plots the 3 holographic measurements for a given frequency index,
+        both in the xy plane and in the Fourier space.
+
+        Parameters
+        ----------
+        frequency_index : int
+            Index of the corresponding frequency of the hologram
         ax : `~matplotlib.axes.Axes`
             A matplotlib axes object to plot into. If no axes is provided,
             a new one will be generated.
@@ -261,21 +349,12 @@ class Measurement(object):
         ax : `~matplotlib.axes.Axes`
             The matplotlib axes object.
         """
+        if ax is None:
+            fig, ax = plt.subplots(3,3)
+        if title == '':
+            title = self.signal.freqlist[frequency_index]+'GHz'
+        ax[:,0] = self.signal.plot_measurement(frequency_index,ax=ax[:,0],xlabel=xlabel,ylabel=ylabel,title='Signal',db=db,cmap=cmap,style=style,**kwargs)
+        ax[:,1] = self.reference.plot_measurement(frequency_index,ax=ax[:,1],xlabel=xlabel,ylabel=ylabel,title='Reference',db=db,cmap=cmap,style=style,**kwargs)
+        ax[:,2] = self.hologram.plot_measurement(frequency_index,ax=ax[:,2],xlabel=xlabel,ylabel=ylabel,title='Hologram',db=db,cmap=cmap,style=style,**kwargs)
         
-        with plt.style.context(style):
-            if ax is None:
-                fig, ax = plt.subplots()
-            if title == '':
-                title = self.freqlist[frequency_index]+'Hz'
-            # Plot wavelet power spectrum
-            if db:
-                pattern = get_db(self.fourier_datacube[frequency_index])
-            else:
-                pattern = self.fourier_datacube[frequency_index]
-            ax.pcolormesh(self.fourier_coordinates[0][:,frequency_index], self.fourier_coordinates[1][:,frequency_index], pattern, 
-                          shading='auto', cmap=cmap, **kwargs)
-
-            ax.set_xlabel(xlabel)
-            ax.set_ylabel(ylabel)
-            ax.set_title(title)
         return ax
