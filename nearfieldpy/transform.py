@@ -3,7 +3,7 @@ import numpy as np
 import scipy
 import pandas as pd 
 from scipy.interpolate import griddata
-import loading
+import nearfieldpy.loading
 
 
 

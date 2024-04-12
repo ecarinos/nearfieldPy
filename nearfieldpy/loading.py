@@ -4,7 +4,7 @@ import numpy as np
 from scipy.interpolate import CubicSpline
 import matplotlib.pyplot as plt
 import re
-from utils import *
+from nearfieldpy.utils import *
 
 def map_2d_correction(dataref,time,lenx,leny,freq='140.0G'):
     """
@@ -72,7 +72,7 @@ def make_data_2d(data,dataref,freq='140.0'):
     amp = complex_amplitude(data['Amp.'+freq+'G'],data['Phase'+freq+'G'])
     data2d = np.array(amp)
     data2d = data2d.reshape(lenx,leny)
-    if dataref is None:
+    if dataref is not None:
         time = str_time(data['Time'])
         dataref_2d = map_2d_correction(dataref,time,lenx,leny,freq)
         data2d = data2d/dataref_2d
@@ -100,6 +100,64 @@ def compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples=(512,512)):
     v_all = np.linspace(-np.pi/(dy*k0),np.pi/(dy*k0),fourier_samples[1])
 
     return fourier_datacube, u_all, v_all
+
+def probe_beam_farfield_correction(freqlist,fourier_datacube,fourier_coordinates,fourier_coordinate_system):
+    """
+    Returns the measured farfield antenna pattern corrected for the farfield pattern of the probe.
+    Based on A. Yaghjian, “Approximate formulas for the far field and gain of open-ended rectangular waveguide,” IEEE AP, 32, 4, 378, 1984. 
+    (doi: 10.1109/TAP.1984.1143332)
+    Equations 1, 2 and 5
+    """
+    a = 1.2954  #mm Dimensions of the probe used
+    b = 0.6477 #mm
+
+    coordinates = fourier_coordinates
+    frequencies = np.array(freqlist,dtype=float)
+    probe_pattern = []
+
+    for i in range(len(frequencies)):
+        k = 2*np.pi*frequencies[i] /299.792458
+        beta_k = np.sqrt(1 - (np.pi /(k*a))**2)
+        if fourier_coordinate_system == "uv":
+
+            u,v = np.meshgrid(coordinates[0][:,i],coordinates[1][:,i])
+            theta = np.arccos(np.sqrt(1-u**2-v**2)) 
+            phi = np.arctan2(u,v)
+
+            E_E = ((1+beta_k*np.cos(theta))*(np.sin(k*b*np.sin(theta)/2)))/((1+beta_k)*(k*b*np.sin(theta)/2))
+            E_H = (np.pi/2)**2 * np.cos(theta) * np.cos(k*a*np.sin(theta)/2) / ((np.pi/2)**2 - (k*a*np.sin(theta)/2)**2)
+            #E_co = (np.sin(phi)*np.cos(phi)*(E_E-E_H))**2 # Rotating the E field to match the co-polarisation measurement
+            E_co = (E_E*np.sin(phi))**2 + (E_H*np.cos(phi))**2
+            E_co = E_co/np.nanmax(np.abs(E_co)) # 
+
+            probe_pattern.append(E_co)   
+        if fourier_coordinate_system == 'tcostsin':
+            tcos,tsin = np.meshgrid(coordinates[0][:,i],coordinates[1][:,i])
+            theta = np.radians(np.sqrt(tcos**2+tsin**2))
+            phi = np.arctan2(tsin,tcos).T
+
+            E_E = ((1+beta_k*np.cos(theta))*(np.sin(k*b*np.sin(theta)/2)))/((1+beta_k)*(k*b*np.sin(theta)/2))
+            E_H = (np.pi/2)**2 * np.cos(theta) * np.cos(k*a*np.sin(theta)/2) / ((np.pi/2)**2 - (k*a*np.sin(theta)/2)**2)
+            #E_co = (np.sin(phi)*np.cos(phi)*(E_E-E_H))**2 # Rotating the E field to match the co-polarisation measurement
+            E_co = (E_E*np.sin(phi))**2 + (E_H*np.cos(phi))**2
+            E_co = E_co/np.nanmax(np.abs(E_co))
+            probe_pattern.append(E_co)
+
+        if fourier_coordinate_system =='txty':
+            tx,ty = np.meshgrid(coordinates[0][:,i],coordinates[1][:,i])
+            u = np.arcsin(tx)
+            v = np.arcsin(ty)
+            theta = np.sqrt(1-u**2+v**2)
+            phi = np.arctan2(u,v)
+
+            E_E = ((1+beta_k*np.cos(theta))*(np.sin(k*b*np.sin(theta)/2)))/((1+beta_k)*(k*b*np.sin(theta)/2))
+            E_H = (np.pi/2)**2 * np.cos(theta) * np.cos(k*a*np.sin(theta)/2) / ((np.pi/2)**2 - (k*a*np.sin(theta)/2)**2)
+            #E_co = (np.sin(phi)*np.cos(phi)*(E_E-E_H))**2 # Rotating the E field to match the co-polarisation measurement
+            E_co = (E_E*np.sin(phi))**2 + (E_H*np.cos(phi))**2
+            E_co = E_co/np.nanmax(np.abs(E_co))
+            probe_pattern.append(E_co)
+    fourier_datacube = fourier_datacube/np.array(probe_pattern)
+    return fourier_datacube
 
 class Measurement(object):
     """The Measurement class stores the data from one set of near field (NF) measurements, 
@@ -173,6 +231,7 @@ class Measurement(object):
         datacube = np.array(data2dlist)
         fourier_datacube, *fourier_coordinates = compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples)
         fourier_coordinate_system = 'uv'
+        fourier_datacube = probe_beam_farfield_correction(freqlist,fourier_datacube,fourier_coordinates,fourier_coordinate_system) #Apply probe correction
 
         return Measurement(data,dataref,datacube,freqlist,fourier_datacube,np.array(fourier_coordinates),fourier_coordinate_system,fourier_samples)
     

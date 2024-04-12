@@ -1,6 +1,7 @@
 import numpy as np
 import re
 from datetime import datetime
+import nearfieldpy.transform as transform
 
 def MAD(x):
     """
@@ -71,3 +72,57 @@ def get_freqlist(data):
         l.append(re.findall(r'\d+\.\d+', t))
     freqlist = np.unique(l)
     return freqlist
+
+def probe_beam_farfield(measurement):
+    """
+    Helper function to get the farfield antenna pattern of the probe. Based on A. Yaghjian, 
+    “Approximate formulas for the far field and gain of open-ended rectangular waveguide,” IEEE AP, 32, 4, 378, 1984. 
+    (doi: 10.1109/TAP.1984.1143332)
+    Equations 1, 2 and 5
+    """
+    a = 1.2954  #mm Dimensions of the probe used
+    b = 0.6477 #mm
+    coordinates = measurement.fourier_coordinates
+    frequencies = measurement.freqlist_ghz
+    probe_pattern = []
+    for i in range(len(frequencies)):
+        k = 2*np.pi*frequencies[i] /299.792458
+        beta_k = np.sqrt(1 - (np.pi /(k*a))**2)
+        if measurement.fourier_coordinate_system == "uv":
+
+            u,v = np.meshgrid(coordinates[0][:,i],coordinates[1][:,i])
+            theta = np.arccos(np.sqrt(1-u**2-v**2))
+            phi = np.arctan2(u,v)
+
+            E_E = ((1+beta_k*np.cos(theta))*(np.sin(k*b*np.sin(theta)/2)))/((1+beta_k)*(k*b*np.sin(theta)/2))
+            E_H = (np.pi/2)**2 * np.cos(theta) * np.cos(k*a*np.sin(theta)/2) / ((np.pi/2)**2 - (k*a*np.sin(theta)/2)**2)
+            #E_co = (np.sin(phi)*np.cos(phi)*(E_E-E_H))**2 # Rotating the E field to match the co-polarisation measurement
+            E_co = (E_E*np.sin(phi))**2 + (E_H*np.cos(phi))**2
+            E_co = E_co/np.nanmax(np.abs(E_co))
+            probe_pattern.append(E_co)   
+
+        if measurement.fourier_coordinate_system == 'tcostsin':
+            tcos,tsin = np.meshgrid(coordinates[0][:,i],coordinates[1][:,i])
+            theta = np.radians(np.sqrt(tcos**2+tsin**2))
+            phi = np.arctan2(tsin,tcos).T
+
+            E_E = ((1+beta_k*np.cos(theta))*(np.sin(k*b*np.sin(theta)/2)))/((1+beta_k)*(k*b*np.sin(theta)/2))
+            E_H = (np.pi/2)**2 * np.cos(theta) * np.cos(k*a*np.sin(theta)/2) / ((np.pi/2)**2 - (k*a*np.sin(theta)/2)**2)
+            #E_co = (np.sin(phi)*np.cos(phi)*(E_E-E_H))**2 # Rotating the E field to match the co-polarisation measurement
+            E_co = (E_E*np.sin(phi))**2 + (E_H*np.cos(phi))**2
+            E_co = E_co/np.nanmax(np.abs(E_co))
+            probe_pattern.append(E_co)
+
+        if measurement.fourier_coordinate_system =='txty':
+            tx,ty = np.meshgrid(coordinates[0][:,i],coordinates[1][:,i])
+            theta = np.arccos(np.sqrt(1-tx**2-ty**2))
+            phi = np.arctan2(tx,ty)
+
+            E_E = ((1+beta_k*np.cos(theta))*(np.sin(k*b*np.sin(theta)/2)))/((1+beta_k)*(k*b*np.sin(theta)/2))
+            E_H = (np.pi/2)**2 * np.cos(theta) * np.cos(k*a*np.sin(theta)/2) / ((np.pi/2)**2 - (k*a*np.sin(theta)/2)**2)
+            #E_co = (np.sin(phi)*np.cos(phi)*(E_E-E_H))**2 # Rotating the E field to match the co-polarisation measurement
+            E_co = (E_E*np.sin(phi))**2 + (E_H*np.cos(phi))**2
+            E_co = E_co/np.nanmax(np.abs(E_co))
+            probe_pattern.append(E_co)
+
+    return np.array(probe_pattern)
