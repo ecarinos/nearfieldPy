@@ -90,7 +90,7 @@ def probe_beam_farfield(measurement):
         beta_k = np.sqrt(1 - (np.pi /(k*a))**2)
         if measurement.fourier_coordinate_system == "uv":
 
-            u,v = np.meshgrid(coordinates[0][:,i],coordinates[1][:,i])
+            u,v = np.meshgrid(coordinates[0,:,i],coordinates[1,:,i])
             theta = np.arccos(np.sqrt(1-u**2-v**2))
             phi = np.arctan2(u,v)
 

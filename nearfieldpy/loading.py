@@ -38,7 +38,7 @@ def map_2d_correction(dataref,time,lenx,leny,freq='140.0G'):
     
     """
     time_ref = str_time(dataref['Time'])
-    amp_ref = complex_amplitude(dataref['Amp.'+freq],dataref['Phase'+freq])
+    amp_ref = complex_amplitude(dataref['Amp.'+freq+'G'],dataref['Phase'+freq+'G'])
     cs = CubicSpline(time_ref,np.array(amp_ref))
     extrapolated_amp_ref = cs(time)
     dataref_2d = extrapolated_amp_ref.reshape(lenx,leny)
@@ -98,7 +98,6 @@ def compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples=(512,512)):
     #compute the u,v Fourier coordinates
     u_all = np.linspace(-np.pi/(dx*k0),np.pi/(dx*k0),fourier_samples[0]) #spatial frequencies go from -pi/k0 to pi/k0
     v_all = np.linspace(-np.pi/(dy*k0),np.pi/(dy*k0),fourier_samples[1])
-
     return fourier_datacube, u_all, v_all
 
 def probe_beam_farfield_correction(freqlist,fourier_datacube,fourier_coordinates,fourier_coordinate_system):
@@ -209,9 +208,21 @@ class Measurement(object):
         return np.array(self.freqlist,dtype=float)
     
     @staticmethod
-    def load_from_file(path,pathref,fourier_samples=(512,512)):
+    def load_from_file(path,pathref,probe_correction=True,fourier_samples=(512,512)):
         """
-        Loads a Measurement from data files with ISAS format.       
+        Loads a Measurement from data files with ISAS format.
+        Attributes:
+        ------------
+        path : str
+            Path to the data file.
+        pathref : str
+            Path to the reference data file.
+        probe_correction : bool
+            Whether to apply the probe correction to the data.
+        fourier_samples : int tuple
+            Number of samples to zero-pad the FFT. Defaults to (512,512).
+            Should always be a power of 2 greater than the length (in points)
+            of each measurement axis.
         """
 
         data = pd.read_pickle(path)
@@ -231,7 +242,8 @@ class Measurement(object):
         datacube = np.array(data2dlist)
         fourier_datacube, *fourier_coordinates = compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples)
         fourier_coordinate_system = 'uv'
-        fourier_datacube = probe_beam_farfield_correction(freqlist,fourier_datacube,fourier_coordinates,fourier_coordinate_system) #Apply probe correction
+        if probe_correction:
+            fourier_datacube = probe_beam_farfield_correction(freqlist,fourier_datacube,fourier_coordinates,fourier_coordinate_system) #Apply probe correction
 
         return Measurement(data,dataref,datacube,freqlist,fourier_datacube,np.array(fourier_coordinates),fourier_coordinate_system,fourier_samples)
     
@@ -367,13 +379,13 @@ class Holographic(object):
         self.reference = reference
         self.hologram = hologram
     
-    def load_from_file(path_signal,path_reference,path_hologram,path_signal_ref,path_reference_ref,path_hologram_ref,fourier_samples=(512,512)):
+    def load_from_file(path_signal,path_reference,path_hologram,path_signal_ref,path_reference_ref,path_hologram_ref,probe_correction=True,fourier_samples=(512,512)):
         """
         Loads a Holographic object from data files with ISAS format.       
         """
-        signal = Measurement.load_from_file(path_signal,path_signal_ref,fourier_samples)
-        reference = Measurement.load_from_file(path_reference,path_reference_ref,fourier_samples)
-        hologram = Measurement.load_from_file(path_hologram,path_hologram_ref,fourier_samples)
+        signal = Measurement.load_from_file(path_signal,path_signal_ref,probe_correction,fourier_samples)
+        reference = Measurement.load_from_file(path_reference,path_reference_ref,probe_correction,fourier_samples)
+        hologram = Measurement.load_from_file(path_hologram,path_hologram_ref,probe_correction,fourier_samples)
         return Holographic(signal,reference,hologram)
     
     def plot_hologram(self, frequency_index, ax=None, xlabel=None, ylabel=None, title='',db=True,
