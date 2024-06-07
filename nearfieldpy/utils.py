@@ -1,5 +1,6 @@
 import numpy as np
 import re
+from copy import deepcopy
 from datetime import datetime
 import nearfieldpy.transform as transform
 
@@ -126,3 +127,32 @@ def probe_beam_farfield(measurement):
             probe_pattern.append(E_co)
 
     return np.array(probe_pattern)
+
+def theta_mask(coordinates0,coordinates1,coordinate_system,theta_range):
+    """
+    Returns a mask to select the data within a given theta range.
+    """
+    if coordinate_system == 'uv':
+        u,v = np.meshgrid(coordinates0,coordinates1)
+        theta = np.degrees(np.arccos(np.sqrt(1-u**2-v**2)))
+    if coordinate_system == 'txty':
+        tx,ty = coordinates0,coordinates1
+        u,v = np.meshgrid(np.sin(tx),np.sin(ty))
+        theta = np.degrees(np.arccos(np.sqrt(1-u**2-v**2)))
+    if coordinate_system == 'tcostsin':
+        tcos,tsin = np.meshgrid(coordinates0,coordinates1)
+        theta = (np.sqrt(tcos**2+tsin**2))
+    mask = (theta > theta_range[0]) & (theta < theta_range[1])
+    return mask
+
+
+
+def theta_mask_measurement(measurement,theta_range):
+    """
+    Returns the measurement masked by the theta_range.
+    """
+    masked_measurement = deepcopy(measurement)
+    for i in range (len(masked_measurement.freqlist)):
+        mask = theta_mask(masked_measurement.fourier_coordinates[0][:,i],masked_measurement.fourier_coordinates[1][:,i],masked_measurement.fourier_coordinate_system,theta_range)
+        masked_measurement.fourier_datacube[i,:,:][~mask] = np.nan
+    return masked_measurement

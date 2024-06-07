@@ -5,6 +5,7 @@ from scipy.interpolate import CubicSpline
 import matplotlib.pyplot as plt
 import re
 from nearfieldpy.utils import *
+import nearfieldpy
 
 def map_2d_correction(dataref,time,lenx,leny,freq='140.0G'):
     """
@@ -88,7 +89,7 @@ def compute_2D_fft_datacube(data,datacube,freqlist,fourier_samples=(512,512)):
     for i in range(datacube.shape[0]):
         fourier_datacube.append(np.fft.fftshift(np.fft.fft2(datacube[i],s=fourier_samples)))
     fourier_datacube = np.array(fourier_datacube)
-    fourier_datacube = fourier_datacube/np.nanmax(np.abs(fourier_datacube)) #normalize the spectra
+    fourier_datacube = fourier_datacube/np.nanmax(np.abs(fourier_datacube),axis=(1,2))[:,None,None] #normalize the spectra
 
     dx,dy = np.max(np.diff(data['x'])),np.max(np.diff(data['y'])) #find the x and y resolution, the steps used in the measurement
     freqlist_ghz = np.array(freqlist,dtype=float) #get the values of the frequencies in GHz
@@ -355,6 +356,37 @@ class Measurement(object):
             ax[0].set_title(title)
         return ax
     
+    def plot_antenna_pattern_cut(self, frequency_index, cut ='horizontal', ax=None, xlabel=None, ylabel=None, title='',db=True, style='default', **kwargs):
+        """Plots the antenna pattern cut for a given frequency index."""
+        with plt.style.context(style):
+            if ax is None:
+                fig,ax = plt.subplots()
+            if title == '':
+                title = self.freqlist[frequency_index]+'GHz'
+            if db:
+                pattern = get_db(self.fourier_datacube[frequency_index])
+                axis_label = 'Amplitude (dB)'
+            else:
+                pattern = np.abs(self.fourier_datacube[frequency_index])
+                axis_label = 'Amplitude (arbitrary units)'
+            if cut == 'horizontal':
+                y = pattern[int(pattern.shape[1]/2),:]
+                im = ax.plot(self.fourier_coordinates[0][:,frequency_index],y)
+                ax.set_xlabel(xlabel)
+
+            if cut == 'vertical':
+                y = pattern[:,int(pattern.shape[0]/2)]
+                im = ax.plot(self.fourier_coordinates[1][:,frequency_index],y)
+                ax.set_xlabel(ylabel)
+
+            ax.grid()
+            ax.set_aspect('auto')
+            ax.set_ylabel(axis_label)
+            ax.set_title(title)
+            return ax
+
+
+    
     def plot_measurement(self,frequency_index,ax=None,xlabel=None,ylabel=None,title='',db=True,
                          cmap='viridis', style='default', **kwargs):
         """Plots the antenna pattern and nearfield measurements for a given frequency index,
@@ -368,7 +400,21 @@ class Measurement(object):
         ax[2] = self.plot_antenna_pattern(frequency_index,ax=ax[2],xlabel=xlabel,ylabel=ylabel,title=title,db=db,cmap=cmap,style=style,**kwargs)
 
         return ax
-
+    
+    def plot_pattern_measurement(self,frequency_index,ax=None,xlabel=None,ylabel=None,title='',db=True,
+                         cmap='viridis', style='default', **kwargs):
+        """Plots the antenna pattern and cuts measurements for a given frequency index in the Fourier space.
+        """
+        if ax is None:
+            fig, ax = plt.subplots(3)
+        if title == '':
+            title = self.freqlist[frequency_index]+'GHz'
+        ax[0] = self.plot_antenna_pattern(frequency_index,ax=ax[0],xlabel=xlabel,ylabel=ylabel,title=title,db=db,cmap=cmap,style=style,**kwargs)
+        ax[1] = self.plot_antenna_pattern_cut(frequency_index,ax=ax[1],xlabel=xlabel,ylabel=ylabel,title=title,db=db,cut='horizontal',style=style,**kwargs)
+        ax[2] = self.plot_antenna_pattern_cut(frequency_index,ax=ax[2],xlabel=ylabel,ylabel=ylabel,title=title,db=db,cut='vertical',style=style,**kwargs)
+        return ax
+    
+  
 class Holographic(object):
     """The Holographic class stores the data from one set of holographic measurements,
     initialized with the load_holo_data method and the paths of the .pkl data files.
